@@ -129,8 +129,8 @@ DISK_MASTER="${DISK_MASTER:-$DISKS_DIR/macos.img}"
 
 RAM="${RAM:-8G}"
 CPU_SOCKETS="${CPU_SOCKETS:-1}"
-CPU_CORES="${CPU_CORES:-16}"
-CPU_THREADS="${CPU_THREADS:-16}"
+CPU_CORES="${CPU_CORES:-4}"
+CPU_THREADS="${CPU_THREADS:-4}"
 SSH_PORT="${SSH_PORT:-2222}"
 TESTING_TIMEOUT="${TESTING_TIMEOUT:-420}" # 7-minute hard kill for testing boots
 # PIN the guest NIC MAC across reverts (load-bearing for DHCP/sshd).

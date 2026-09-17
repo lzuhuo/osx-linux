@@ -535,9 +535,21 @@ QEMU_ARGS=(
   -qmp "unix:$QMP_SOCK,server=on,wait=off"
 )
 
-# Guest KP often reboots (even with OpenCore DB_HALT). Default exit so the GTK
-# window disappears and serial stays under vm/disks/run/serial-*.log.
-QEMU_REBOOT_ACTION="${QEMU_REBOOT_ACTION:-exit}"
+if [ -f "$DISKS_DIR/BaseSystem.img" ]; then
+  QEMU_ARGS+=(
+    -drive "id=InstallMedia,format=raw,if=none,file=$DISKS_DIR/BaseSystem.img"
+    -device ide-hd,bus=sata.3,drive=InstallMedia
+  )
+fi
+
+# Guest KP often reboots (even with OpenCore DB_HALT). Default exit for testing
+# so the GTK window disappears and serial stays under run log. For interactive/capture
+# modes, default to reset so the VM reboots normally without closing the window.
+if [ "$BOOT_CLASS" = "testing" ]; then
+  QEMU_REBOOT_ACTION="${QEMU_REBOOT_ACTION:-exit}"
+else
+  QEMU_REBOOT_ACTION="${QEMU_REBOOT_ACTION:-reset}"
+fi
 case "$QEMU_REBOOT_ACTION" in
   exit)
     QEMU_ARGS+=(-action reboot=shutdown)

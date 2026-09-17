@@ -122,7 +122,8 @@ REIMS_VGPU_EFI_ROM_SCRIPT="$REPO_ROOT/crates/reims-vgpu-efi/scripts/reims-vgpu-e
 # from "not set" once it has run.
 OVMF_CODE_DEFAULT="$OVMF_DIR/OVMF_CODE_4M.fd"
 OVMF_CODE="${OVMF_CODE:-$OVMF_CODE_DEFAULT}"
-OVMF_VARS_MASTER="${OVMF_VARS_MASTER:-$OVMF_DIR/OVMF_VARS-1920x1080.fd}"
+RESOLUTION="${RESOLUTION:-1920x1080}"
+OVMF_VARS_MASTER="${OVMF_VARS_MASTER:-$OVMF_DIR/OVMF_VARS-$RESOLUTION.fd}"
 OPENCORE_MASTER="${OPENCORE_MASTER:-$DISKS_DIR/OpenCore.qcow2}"
 DISK_MASTER="${DISK_MASTER:-$DISKS_DIR/macos.img}"
 
@@ -233,6 +234,19 @@ while [ "$#" -gt 0 ]; do
       ;;
     --device=*)
       set_gfx_device "${1#--device=}"
+      shift
+      ;;
+    --resolution)
+      shift
+      RESOLUTION="${1:-}"
+      [ -n "$RESOLUTION" ] || { echo "boot-x86.sh: --resolution needs a value (e.g. 1920x1080)" >&2; exit 64; }
+      # Update the master variables if we override the resolution on CLI
+      OVMF_VARS_MASTER="$OVMF_DIR/OVMF_VARS-$RESOLUTION.fd"
+      shift
+      ;;
+    --resolution=*)
+      RESOLUTION="${1#--resolution=}"
+      OVMF_VARS_MASTER="$OVMF_DIR/OVMF_VARS-$RESOLUTION.fd"
       shift
       ;;
     --testing) BOOT_CLASS="testing"; shift ;;

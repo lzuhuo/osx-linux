@@ -369,17 +369,29 @@ install_vm() {
 
     cd "$SCRIPT_DIR/osx-kvm-temp"
 
-    # Se já houver um BaseSystem.dmg na raiz, trazemos para cá para economizar download
-    if [ -f "$SCRIPT_DIR/BaseSystem.dmg" ] && [ ! -f "BaseSystem.dmg" ]; then
+    # Gerenciar cache individual por versão de macOS para evitar conflitos de mídias (ex: Sonoma usando Tahoe)
+    local cached_dmg="$SCRIPT_DIR/vm/disks/BaseSystem-$MAC_VERSION.dmg"
+    
+    # Remove mídias residuais genéricas antes do processo para garantir que a versão correta seja montada
+    rm -f BaseSystem.dmg BaseSystem.img
+    
+    if [ -f "$cached_dmg" ]; then
+        echo -e "${GREEN}Usando BaseSystem-$MAC_VERSION.dmg do cache de mídia local...${NC}"
+        cp -f "$cached_dmg" BaseSystem.dmg
+    elif [ -f "$SCRIPT_DIR/BaseSystem.dmg" ]; then
+        # Retrocompatibilidade
         echo -e "Copiando BaseSystem.dmg existente na raiz..."
-        cp "$SCRIPT_DIR/BaseSystem.dmg" .
+        cp -f "$SCRIPT_DIR/BaseSystem.dmg" BaseSystem.dmg
     fi
 
     if [ ! -f "BaseSystem.dmg" ]; then
-        echo -e "Iniciando download da imagem de recuperação..."
+        echo -e "Iniciando download da imagem de recuperação para o macOS ${GREEN}$MAC_VERSION${NC}..."
         ./fetch-macOS-v2.py --shortname="$MAC_VERSION"
+        # Copia para a pasta de mídias do Reims como cache para evitar downloads repetidos da mesma versão
+        mkdir -p "$SCRIPT_DIR/vm/disks"
+        cp -f BaseSystem.dmg "$cached_dmg"
     else
-        echo -e "${GREEN}BaseSystem.dmg já existe. Pulando download.${NC}"
+        echo -e "${GREEN}BaseSystem.dmg preparado com sucesso.${NC}"
     fi
 
     # Converter DMG para IMG bruta

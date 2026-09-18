@@ -29,7 +29,28 @@ Ideal para quem quer rodar macOS fluido em máquinas modernas (como processadore
 
 ---
 
-## 🛠️ Instalação dos Requisitos no Host
+## 🚀 Instalação Automática com o Reims Manager (Recomendado)
+
+Se você deseja economizar tempo e ter uma interface visual amigável via terminal para fazer tudo isso de forma automatizada, use o **Reims Manager**! Ele automatiza a verificação de requisitos, compilação do QEMU, downloads das imagens oficiais de recuperação, configuração do hardware (RAM, CPU, HD), inicialização nos modos corretos de forma protegida e até tarefas de reparo e atualizações.
+
+Basta abrir o terminal na pasta raiz do projeto e executar:
+
+```bash
+chmod +x reims_manager.sh
+./reims_manager.sh
+```
+
+### O que você pode fazer pelo Gerenciador:
+* **`1` - Instalar Nova VM:** Escolha a versão desejada (de High Sierra ao Sequoia/Tahoe), informe o hardware desejado e o script cuidará do download, criação do disco e da inicialização estável com instruções detalhadas de formatação.
+* **`2` - Iniciar VM Existente:** Escolha qual VM ligar e o seu driver de vídeo: com **Aceleração Reims vGPU (Vulkan)** acelerada por hardware ou em modo de compatibilidade básico (VMware SVGA). O script detecta automaticamente se a VM é nova e oferece iniciá-la em Modo de Captura para criar o primeiro snapshot imutável de paravirtualização.
+* **`3` - Editar Configurações:** Altere as especificações de hardware (RAM, Cores de CPU e Resolução de Tela) de qualquer uma das suas VMs individualmente de forma extremamente simples.
+* **`4` - Deletar VM:** Remova com segurança e limpe todo o espaço ocupado por uma VM e todos os seus snapshots.
+* **`5` - Menu de Reparo:** Faça limpezas de logs e sockets temporários travados por crashes, verifique a integridade dos discos virtuais ou force a recompilação de componentes.
+* **`6` - Menu de Atualizações:** Verifique se existem novos commits no repositório principal, no QEMU customizado, no OSX-KVM e também analise novas versões de crates/dependências Rust.
+
+---
+
+## 🛠️ Instalação Manual (Passo a Passo)
 
 Antes de compilar, instale os compiladores, gerenciadores de build e ferramentas de firmware exigidas pelo QEMU e pelo Reims vGPU.
 

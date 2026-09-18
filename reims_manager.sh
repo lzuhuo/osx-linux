@@ -80,6 +80,45 @@ start_vm() {
         resolution=$(grep "^RESOLUTION=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "1920x1080")
     fi
     
+    # Se estiver em ambiente Omarchy/Hyprland ou em desktops tradicionais (GNOME, KDE, XFCE, Cinnamon, etc. via wmctrl)
+    local target_workspace=""
+    local uses_hyprctl=0
+    local uses_wmctrl=0
+    
+    if command -v hyprctl >/dev/null 2>&1; then
+        uses_hyprctl=1
+    elif command -v wmctrl >/dev/null 2>&1; then
+        uses_wmctrl=1
+    fi
+    
+    if [ "$uses_hyprctl" -eq 1 ] || [ "$uses_wmctrl" -eq 1 ]; then
+        echo -e "\n${BLUE}[Ambiente Gráfico com Suporte a Área de Trabalho Detectado]${NC}"
+        read -rp "Deseja iniciar a VM em qual Área de Trabalho Virtual? (Ex: 1-10, Enter para atual): " ws_choice
+        if [[ "$ws_choice" =~ ^[0-9]+$ ]]; then
+            target_workspace="$ws_choice"
+            if [ "$uses_hyprctl" -eq 1 ]; then
+                echo -e "${GREEN}Configurando Hyprland para abrir a VM no Workspace $ws_choice...${NC}"
+                hyprctl keyword windowrulev2 "workspace $ws_choice,class:^(qemu-system-x86_64)$" >/dev/null 2>&1 || true
+                hyprctl keyword windowrulev2 "workspace $ws_choice,class:^(qemu)$" >/dev/null 2>&1 || true
+            elif [ "$uses_wmctrl" -eq 1 ]; then
+                echo -e "${GREEN}Agendando movimento da VM para o Workspace $ws_choice via wmctrl...${NC}"
+                # Move a janela do QEMU assim que ela aparecer em segundo plano (assíncrono)
+                local ws_index=$((ws_choice - 1))
+                if [ "$ws_index" -lt 0 ]; then ws_index=0; fi
+                (
+                    for i in {1..30}; do
+                        sleep 0.5
+                        local win_id=$(wmctrl -l 2>/dev/null | grep -iE "QEMU|reims-vgpu" | head -n 1 | cut -d' ' -f1 || true)
+                        if [ -n "$win_id" ]; then
+                            wmctrl -i -r "$win_id" -t "$ws_index" >/dev/null 2>&1 || true
+                            break
+                        fi
+                    done
+                ) &
+            fi
+        fi
+    fi
+    
     echo -e "\nSelecione o modo de inicialização:"
     echo "1) Reims vGPU (Aceleração Gráfica 3D via Vulkan) - [RECOMENDADO]"
     echo "2) VMware SVGA (Modo de Compatibilidade / renderização por CPU)"

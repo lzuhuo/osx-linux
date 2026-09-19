@@ -169,6 +169,7 @@ start_vm() {
     fi
     
     local selected_vm="${VMS_LIST[$((vm_choice-1))]}"
+    local config_json="$SCRIPT_DIR/vm/disks/rails/$selected_vm/config.json"
     local config_file="$SCRIPT_DIR/vm/disks/rails/$selected_vm/config.sh"
     
     # Carregar valores salvos ou usar padrões seguros
@@ -177,7 +178,34 @@ start_vm() {
     local threads="8"
     local resolution="1920x1080"
     
-    if [ -f "$config_file" ]; then
+    # Se o config.json não existir, mas o config.sh sim, criar o json a partir do sh
+    if [ ! -f "$config_json" ] && [ -f "$config_file" ]; then
+        local r=$(grep "^RAM=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "16G")
+        local c=$(grep "^CPU_CORES=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "4")
+        local t=$(grep "^CPU_THREADS=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "8")
+        local res=$(grep "^RESOLUTION=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "1920x1080")
+        python3 -c "import json; json.dump({'ram': '$r', 'cpu_cores': int('$c'), 'cpu_threads': int('$t'), 'resolution': '$res'}, open('$config_json', 'w'), indent=4)" 2>/dev/null || true
+    fi
+
+    # Se o config.json existir, ler os valores dele (fonte de verdade absoluta!)
+    if [ -f "$config_json" ]; then
+        ram=$(python3 -c "import json; print(json.load(open('$config_json')).get('ram', '16G'))" 2>/dev/null || echo "16G")
+        cores=$(python3 -c "import json; print(json.load(open('$config_json')).get('cpu_cores', 4))" 2>/dev/null || echo "4")
+        threads=$(python3 -c "import json; print(json.load(open('$config_json')).get('cpu_threads', 8))" 2>/dev/null || echo "8")
+        resolution=$(python3 -c "import json; print(json.load(open('$config_json')).get('resolution', '1920x1080'))" 2>/dev/null || echo "1920x1080")
+        
+        # Validar e sincronizar config.sh para refletir o JSON de forma correta
+        local sh_ram=$(grep "^RAM=" "$config_file" | cut -d= -f2 | tr -d '"' 2>/dev/null || echo "")
+        local sh_cores=$(grep "^CPU_CORES=" "$config_file" | cut -d= -f2 | tr -d '"' 2>/dev/null || echo "")
+        
+        if [ "$sh_ram" != "$ram" ] || [ "$sh_cores" != "$cores" ]; then
+            echo -e "${YELLOW}Alterações detectadas no config.json. Sincronizando especificações da VM...${NC}"
+            echo "RAM=\"$ram\"" > "$config_file"
+            echo "CPU_CORES=\"$cores\"" >> "$config_file"
+            echo "CPU_THREADS=\"$threads\"" >> "$config_file"
+            echo "RESOLUTION=\"$resolution\"" >> "$config_file"
+        fi
+    elif [ -f "$config_file" ]; then
         ram=$(grep "^RAM=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "16G")
         cores=$(grep "^CPU_CORES=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "4")
         threads=$(grep "^CPU_THREADS=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "8")
@@ -290,6 +318,7 @@ edit_vm() {
     fi
     
     local selected_vm="${VMS_LIST[$((vm_choice-1))]}"
+    local config_json="$SCRIPT_DIR/vm/disks/rails/$selected_vm/config.json"
     local config_file="$SCRIPT_DIR/vm/disks/rails/$selected_vm/config.sh"
     
     # Valores atuais ou padrões
@@ -297,7 +326,11 @@ edit_vm() {
     local cores="4"
     local resolution="1920x1080"
     
-    if [ -f "$config_file" ]; then
+    if [ -f "$config_json" ]; then
+        ram=$(python3 -c "import json; print(json.load(open('$config_json')).get('ram', '16G'))" 2>/dev/null || echo "16G")
+        cores=$(python3 -c "import json; print(json.load(open('$config_json')).get('cpu_cores', 4))" 2>/dev/null || echo "4")
+        resolution=$(python3 -c "import json; print(json.load(open('$config_json')).get('resolution', '1920x1080'))" 2>/dev/null || echo "1920x1080")
+    elif [ -f "$config_file" ]; then
         ram=$(grep "^RAM=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "16G")
         cores=$(grep "^CPU_CORES=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "4")
         resolution=$(grep "^RESOLUTION=" "$config_file" | cut -d= -f2 | tr -d '"' || echo "1920x1080")
@@ -346,6 +379,11 @@ edit_vm() {
     # Salvar configurações atualizadas
     local threads=$(( cores * 2 ))
     mkdir -p "$(dirname "$config_file")"
+    
+    # Salvar no JSON (fonte de verdade absoluta!)
+    python3 -c "import json; json.dump({'ram': '$ram', 'cpu_cores': int('$cores'), 'cpu_threads': int('$threads'), 'resolution': '$resolution'}, open('$config_json', 'w'), indent=4)" 2>/dev/null || true
+    
+    # Salvar no config.sh para compatibilidade retroativa
     echo "RAM=\"$ram\"" > "$config_file"
     echo "CPU_CORES=\"$cores\"" >> "$config_file"
     echo "CPU_THREADS=\"$threads\"" >> "$config_file"
@@ -424,7 +462,7 @@ install_dependencies() {
         echo -e "Instalando dependências via ${GREEN}pacman${NC}..."
         echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para autenticação.${NC}"
         sudo -v
-        sudo pacman -S --needed --noconfirm base-devel git wget qemu-base libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen meson ninja dtc libslirp llvm-libs llvm spirv-tools vulkan-headers > "$SCRIPT_DIR/pacman_install.log" 2>&1 &
+        sudo pacman -S --needed --noconfirm base-devel git wget qemu-base libguestfs p7zip make python python-pip cdrtools net-tools screen meson ninja dtc libslirp llvm-libs llvm spirv-tools vulkan-headers > "$SCRIPT_DIR/pacman_install.log" 2>&1 &
         show_spinner $! "Instalando pacotes do sistema via pacman" "$SCRIPT_DIR/pacman_install.log" || {
             echo -e "${RED}Erro na instalação. Detalhes do log em pacman_install.log:${NC}"
             tail -n 15 "$SCRIPT_DIR/pacman_install.log"
@@ -707,7 +745,13 @@ install_vm() {
     mkdir -p "$SCRIPT_DIR/vm/disks/rails/$RAIL_NAME" "$SCRIPT_DIR/vm/ovmf"
 
     echo -e "Salvando configurações iniciais da VM..."
+    local config_json="$SCRIPT_DIR/vm/disks/rails/$RAIL_NAME/config.json"
     local config_file="$SCRIPT_DIR/vm/disks/rails/$RAIL_NAME/config.sh"
+    
+    # Salvar no JSON (fonte de verdade absoluta!)
+    python3 -c "import json; json.dump({'ram': '$ram_input', 'cpu_cores': int('$cpu_cores'), 'cpu_threads': int('$cpu_threads'), 'resolution': '1920x1080'}, open('$config_json', 'w'), indent=4)" 2>/dev/null || true
+    
+    # Salvar no config.sh para compatibilidade retroativa
     echo "RAM=\"$ram_input\"" > "$config_file"
     echo "CPU_CORES=\"$cpu_cores\"" >> "$config_file"
     echo "CPU_THREADS=\"$cpu_threads\"" >> "$config_file"

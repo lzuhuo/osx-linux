@@ -75,3 +75,7 @@ gemini-sessions.json
 
 # Local log files
 *.log
+
+# Temp download and setup artifacts
+BaseSystem.chunklist
+/osx-kvm-temp/

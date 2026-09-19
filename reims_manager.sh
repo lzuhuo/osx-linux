@@ -19,6 +19,107 @@ NC='\033[0;37m' # Sem Cor
 
 VMS_LIST=()
 
+# Função para exibir um spinner animado moderno e uma caixa de logs em tempo real enquanto um processo roda em background
+show_spinner() {
+    local pid=$1
+    local message="$2"
+    local log_file="${3:-/dev/null}"
+    local delay=0.1
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' # Spinner moderno de braille
+    local spin_idx=0
+    
+    # Esconde o cursor do terminal para evitar piscadas
+    tput civis 2>/dev/null || true
+    
+    while kill -0 "$pid" 2>/dev/null; do
+        # Posiciona o cursor no topo esquerdo (evita flickers)
+        printf "\033[H"
+        
+        # Desenhar o cabeçalho estático do menu
+        echo -e "${BLUE}============================================================${NC}"
+        echo -e "${GREEN}      Gerenciador de VMs macOS - Reims Paravirtualização    ${NC}"
+        echo -e "${BLUE}============================================================${NC}"
+        echo -e ""
+        
+        # Desenhar o spinner e a mensagem ativa
+        local char="${spinstr:$spin_idx:1}"
+        spin_idx=$(( (spin_idx + 1) % ${#spinstr} ))
+        echo -e "  ${BLUE}$char${NC}  ${YELLOW}$message...${NC}"
+        echo -e ""
+        
+        # Desenhar a caixa de logs
+        echo -e "  ${BLUE}┌─────────────────────[ LOGS EM TEMPO REAL ]─────────────────────┐${NC}"
+        
+        local lines=()
+        if [ -f "$log_file" ] && [ "$log_file" != "/dev/null" ]; then
+            while IFS= read -r line; do
+                # Limpar retornos de carro, tabulações e caracteres de escape ANSI para manter a caixa limpa
+                local clean_line=$(echo "$line" | tr -d '\r' | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | cut -c1-60)
+                printf -v padded_line "%-60s" "$clean_line"
+                lines+=("$padded_line")
+            done < <(tail -n 8 "$log_file")
+        fi
+        
+        # Se o log tiver menos de 8 linhas, preencher com vazias
+        while [ ${#lines[@]} -lt 8 ]; do
+            printf -v padded_line "%-60s" ""
+            lines+=("$padded_line")
+        done
+        
+        # Imprimir as 8 linhas de log dentro das bordas da caixa
+        for line in "${lines[@]}"; do
+            echo -e "  ${BLUE}│${NC}  $line  ${BLUE}│${NC}"
+        done
+        
+        echo -e "  ${BLUE}└────────────────────────────────────────────────────────────────┘${NC}"
+        
+        sleep $delay
+    done
+    
+    # Restaura o cursor do terminal
+    tput cnorm 2>/dev/null || true
+    
+    # Aguarda o processo terminar e pega o código de saída
+    wait "$pid"
+    local exit_code=$?
+    
+    # Atualiza a tela com o resultado final posicionado no topo
+    printf "\033[H"
+    echo -e "${BLUE}============================================================${NC}"
+    echo -e "${GREEN}      Gerenciador de VMs macOS - Reims Paravirtualização    ${NC}"
+    echo -e "${BLUE}============================================================${NC}"
+    echo -e ""
+    
+    if [ $exit_code -eq 0 ]; then
+        echo -e "  [${GREEN}✓${NC}]  ${GREEN}${message} - Concluído com Sucesso!${NC}"
+    else
+        echo -e "  [${RED}✗${NC}]  ${RED}${message} - Falhou! (Código: $exit_code)${NC}"
+    fi
+    echo -e ""
+    
+    # Desenhar caixa final
+    echo -e "  ${BLUE}┌─────────────────────────[ FIM DO LOG ]─────────────────────────┐${NC}"
+    local lines=()
+    if [ -f "$log_file" ] && [ "$log_file" != "/dev/null" ]; then
+        while IFS= read -r line; do
+            local clean_line=$(echo "$line" | tr -d '\r' | sed 's/\x1B\[[0-9;]*[a-zA-Z]//g' | cut -c1-60)
+            printf -v padded_line "%-60s" "$clean_line"
+            lines+=("$padded_line")
+        done < <(tail -n 8 "$log_file")
+    fi
+    while [ ${#lines[@]} -lt 8 ]; do
+        printf -v padded_line "%-60s" ""
+        lines+=("$padded_line")
+    done
+    for line in "${lines[@]}"; do
+        echo -e "  ${BLUE}│${NC}  $line  ${BLUE}│${NC}"
+    done
+    echo -e "  ${BLUE}└────────────────────────────────────────────────────────────────┘${NC}"
+    echo -e ""
+    
+    return $exit_code
+}
+
 list_vms() {
     VMS_LIST=()
     local rails_dir="$SCRIPT_DIR/vm/disks/rails"
@@ -318,36 +419,53 @@ install_dependencies() {
 
     if [ -n "$pacman_bin" ]; then
         echo -e "Instalando dependências via ${GREEN}pacman${NC}..."
-        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
-        sudo pacman -S --needed --noconfirm base-devel git wget qemu-base libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen meson ninja dtc libslirp llvm-libs llvm spirv-tools vulkan-headers || true
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para autenticação.${NC}"
+        sudo -v
+        sudo pacman -S --needed --noconfirm base-devel git wget qemu-base libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen meson ninja dtc libslirp llvm-libs llvm spirv-tools vulkan-headers > "$SCRIPT_DIR/pacman_install.log" 2>&1 &
+        show_spinner $! "Instalando pacotes do sistema via pacman" "$SCRIPT_DIR/pacman_install.log" || {
+            echo -e "${RED}Erro na instalação. Detalhes do log em pacman_install.log:${NC}"
+            tail -n 15 "$SCRIPT_DIR/pacman_install.log"
+        }
         
         # Configurar Rustup para UEFI no Arch
         if command -v rustup >/dev/null 2>&1; then
-            echo -e "${GREEN}Rustup detectado.${NC}"
+            echo -e "  [${GREEN}✓${NC}]  ${GREEN}Rustup detectado.${NC}"
         else
             echo -e "${YELLOW}Instalando rustup no lugar do rust do sistema para suporte UEFI...${NC}"
-            sudo pacman -Rdd --noconfirm rust || true
-            sudo pacman -S --noconfirm rustup || true
-            rustup default stable || true
+            sudo pacman -Rdd --noconfirm rust >/dev/null 2>&1 || true
+            sudo pacman -S --noconfirm rustup >/dev/null 2>&1 || true
+            rustup default stable >/dev/null 2>&1 || true
         fi
         
     elif [ -n "$dnf_bin" ]; then
         echo -e "Instalando dependências via ${GREEN}dnf${NC}..."
-        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
-        # Instalação das ferramentas base e de compilação do QEMU/Reims no Fedora
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para autenticação.${NC}"
+        sudo -v
+        # Instalação das ferramentas base e de compilação do QEMU/Reims no Fedora (incluindo suporte a interface gráfica GTK/SDL)
         sudo dnf install -y qemu-kvm git wget libguestfs-tools dmg2img p7zip p7zip-plugins make python3 python3-pip genisoimage net-tools screen tesseract vim \
             meson ninja-build glib2-devel pixman-devel libslirp-devel libbpf-devel libcap-ng-devel libseccomp-devel vulkan-headers vulkan-loader-devel spirv-tools llvm llvm-devel clang \
-            gtk3-devel vte291-devel SDL2-devel SDL2_image-devel libepoxy-devel mesa-libEGL-devel mesa-libgbm-devel virglrenderer-devel libdrm-devel || true
+            gtk3-devel vte291-devel SDL2-devel SDL2_image-devel libepoxy-devel mesa-libEGL-devel mesa-libgbm-devel virglrenderer-devel libdrm-devel > "$SCRIPT_DIR/dnf_install.log" 2>&1 &
+        show_spinner $! "Instalando pacotes do sistema via dnf (pode levar alguns minutos)" "$SCRIPT_DIR/dnf_install.log" || {
+            echo -e "${RED}Erro na instalação. Detalhes do log em dnf_install.log:${NC}"
+            tail -n 15 "$SCRIPT_DIR/dnf_install.log"
+        }
             
     elif [ -n "$apt_bin" ]; then
         echo -e "Instalando dependências via ${GREEN}apt-get${NC}..."
-        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para atualizar os repositórios e instalar os pacotes.${NC}"
-        sudo apt-get update
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para autenticação.${NC}"
+        sudo -v
+        sudo apt-get update > "$SCRIPT_DIR/apt_update.log" 2>&1 &
+        show_spinner $! "Atualizando os repositórios do sistema (apt update)" "$SCRIPT_DIR/apt_update.log"
+        
         sudo apt-get install -y qemu-system uml-utilities virt-manager git \
             wget libguestfs-tools p7zip-full make dmg2img tesseract-ocr \
             tesseract-ocr-eng genisoimage vim net-tools screen build-essential \
             meson ninja-build libglib2.0-dev libpixman-1-dev libslirp-dev libbpf-dev libcap-ng-dev libseccomp-dev python3-pip llvm spirv-tools \
-            libgtk-3-dev libsdl2-dev libvte-2.91-dev libepoxy-dev libgbm-dev || true
+            libgtk-3-dev libsdl2-dev libvte-2.91-dev libepoxy-dev libgbm-dev > "$SCRIPT_DIR/apt_install.log" 2>&1 &
+        show_spinner $! "Instalando pacotes do sistema via apt-get" "$SCRIPT_DIR/apt_install.log" || {
+            echo -e "${RED}Erro na instalação. Detalhes do log em apt_install.log:${NC}"
+            tail -n 15 "$SCRIPT_DIR/apt_install.log"
+        }
     else
         echo -e "${YELLOW}Gerenciador de pacotes pacman, apt ou dnf não encontrado.${NC}"
         echo -e "${YELLOW}Certifique-se de que as dependências básicas (qemu, dmg2img, make, meson, ninja, libslirp, etc.) já estão instaladas.${NC}"
@@ -410,11 +528,14 @@ install_vm() {
     # --- Compilar QEMU Interno ---
     echo -e "\n${BLUE}[2/7] Compilando e configurando o QEMU interno com suporte a Vulkan/Reims...${NC}"
     # Executa o script de compilação local
-    ./scripts/qemu-build/qemu-build.sh --target x86_64 --backend vulkan
+    ./scripts/qemu-build/qemu-build.sh --target x86_64 --backend vulkan > "$SCRIPT_DIR/qemu_build.log" 2>&1 &
+    show_spinner $! "Compilando QEMU com suporte Reims vGPU (isso pode levar de 2 a 5 minutos)" "$SCRIPT_DIR/qemu_build.log"
+    local build_res=$?
 
     QEMU_BIN="$SCRIPT_DIR/vendor/qemu/build/qemu-system-x86_64"
-    if [ ! -f "$QEMU_BIN" ]; then
-        echo -e "${RED}Erro: Falha ao compilar o QEMU em $QEMU_BIN. Abortando.${NC}"
+    if [ $build_res -ne 0 ] || [ ! -f "$QEMU_BIN" ]; then
+        echo -e "${RED}Erro: Falha ao compilar o QEMU. Veja as últimas linhas do log em qemu_build.log:${NC}"
+        tail -n 30 "$SCRIPT_DIR/qemu_build.log"
         exit 1
     fi
     echo -e "${GREEN}QEMU compilado com sucesso em: $QEMU_BIN${NC}"
@@ -519,18 +640,18 @@ install_vm() {
     fi
 
     # Converter DMG para IMG bruta
-    echo -e "Convertendo BaseSystem.dmg para formato cru (.img)..."
     if command -v dmg2img >/dev/null 2>&1; then
-        dmg2img -f -i BaseSystem.dmg BaseSystem.img
+        dmg2img -f -i BaseSystem.dmg BaseSystem.img > "$SCRIPT_DIR/dmg_convert.log" 2>&1 &
+        show_spinner $! "Convertendo BaseSystem.dmg para formato cru (.img)" "$SCRIPT_DIR/dmg_convert.log"
     else
-        echo -e "dmg2img não encontrado. Usando qemu-img para conversão..."
-        qemu-img convert -O raw BaseSystem.dmg BaseSystem.img
+        qemu-img convert -O raw BaseSystem.dmg BaseSystem.img > "$SCRIPT_DIR/dmg_convert.log" 2>&1 &
+        show_spinner $! "Convertendo BaseSystem.dmg para formato cru (.img)" "$SCRIPT_DIR/dmg_convert.log"
     fi
 
     # Criar o disco virtual rígido para a instalação do macOS
-    echo -e "Criando disco virtual rígido de $disk_size..."
     rm -f mac_hdd_ng.img
-    qemu-img create -f qcow2 mac_hdd_ng.img "$disk_size"
+    qemu-img create -f qcow2 mac_hdd_ng.img "$disk_size" > "$SCRIPT_DIR/disk_create.log" 2>&1 &
+    show_spinner $! "Criando disco virtual rígido de $disk_size" "$SCRIPT_DIR/disk_create.log"
 
     # --- Iniciar a Instalação com Interface Gráfica ---
     echo -e "\n${BLUE}[5/7] Iniciar a Máquina Virtual de Instalação...${NC}"
@@ -682,9 +803,25 @@ repair_menu() {
                         rm -rf "$SCRIPT_DIR/vendor/qemu/build"
                     fi
                 fi
+<<<<<<< HEAD
                 "$SCRIPT_DIR/scripts/qemu-build/qemu-build.sh" --target x86_64 --backend vulkan || true
+=======
+                "$SCRIPT_DIR/scripts/qemu-build/qemu-build.sh" --target x86_64 --backend vulkan > "$SCRIPT_DIR/qemu_build.log" 2>&1 &
+                show_spinner $! "Compilando QEMU com suporte Reims vGPU (pode levar alguns minutos)"
+                local build_res=$?
+                if [ $build_res -ne 0 ]; then
+                    echo -e "${RED}Erro: Falha ao compilar o QEMU. Veja as últimas linhas do log em qemu_build.log:${NC}"
+                    tail -n 25 "$SCRIPT_DIR/qemu_build.log"
+                fi
+                
+>>>>>>> 93d46773 (feat: add initial logging for boot-x86.sh and QEMU build process)
                 echo -e "\n${BLUE}Recompilando GOP ROM...${NC}"
-                "$SCRIPT_DIR/crates/reims-vgpu-efi/scripts/reims-vgpu-efi-rom/reims-vgpu-efi-rom.sh" || true
+                "$SCRIPT_DIR/crates/reims-vgpu-efi/scripts/reims-vgpu-efi-rom/reims-vgpu-efi-rom.sh" > "$SCRIPT_DIR/gop_build.log" 2>&1 &
+                show_spinner $! "Compilando firmware UEFI GOP ROM"
+                local gop_res=$?
+                if [ $gop_res -ne 0 ]; then
+                    echo -e "${RED}Erro: Falha ao compilar a GOP ROM. Detalhes em gop_build.log.${NC}"
+                fi
                 echo -e "\n${GREEN}Recompilação finalizada!${NC}"
                 read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
                 ;;
@@ -806,10 +943,11 @@ update_menu() {
                 ;;
             3)
                 echo -e "\n${BLUE}Atualizando e sincronizando submódulos...${NC}"
-                git submodule update --init --recursive
+                git submodule update --init --recursive > "$SCRIPT_DIR/submodules_update.log" 2>&1 &
+                show_spinner $! "Sincronizando e atualizando submódulos do Git"
                 if [ -d "$SCRIPT_DIR/osx-kvm-temp/.git" ]; then
-                    echo -e "Atualizando repositório OSX-KVM em osx-kvm-temp..."
-                    git -C "$SCRIPT_DIR/osx-kvm-temp" pull --rebase || true
+                    git -C "$SCRIPT_DIR/osx-kvm-temp" pull --rebase > "$SCRIPT_DIR/osx_kvm_update.log" 2>&1 &
+                    show_spinner $! "Atualizando repositório OSX-KVM"
                 fi
                 echo -e "${GREEN}Submódulos atualizados com sucesso!${NC}"
                 read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
@@ -867,5 +1005,38 @@ main_menu() {
     done
 }
 
-# Inicia o Menu Principal
+# Verificar se o submódulo QEMU está inicializado e populado
+check_submodules() {
+    local qemu_dir="$SCRIPT_DIR/vendor/qemu"
+    # Se a pasta do QEMU não existir, estiver vazia, ou não tiver o arquivo configure do QEMU
+    if [ ! -d "$qemu_dir" ] || [ ! -f "$qemu_dir/configure" ]; then
+        echo -e "${YELLOW}Aviso: O submódulo QEMU não está inicializado ou está incompleto.${NC}"
+        echo -e "Para que o Reims funcione, precisamos baixar o código-fonte do QEMU (cerca de 150-200MB)."
+        read -rp "Deseja inicializar e baixar o submódulo QEMU automaticamente agora? [S/n]: " sub_choice
+        sub_choice="${sub_choice:-S}"
+        if [[ "$sub_choice" =~ ^[Ss]$ ]]; then
+            echo -e "\n${BLUE}Inicializando e atualizando submódulos do Git (QEMU)...${NC}"
+            if command -v git >/dev/null 2>&1; then
+                cd "$SCRIPT_DIR"
+                git submodule update --init --recursive > "$SCRIPT_DIR/submodules_update.log" 2>&1 &
+                show_spinner $! "Baixando o código-fonte do QEMU via Git submodules (cerca de 150-200MB)"
+                local sub_res=$?
+                if [ $sub_res -eq 0 ]; then
+                    echo -e "${GREEN}Submódulos populados com sucesso!${NC}"
+                else
+                    echo -e "${RED}Erro ao baixar submódulos. Detalhes em submodules_update.log.${NC}"
+                fi
+            else
+                echo -e "${RED}Erro: Comando 'git' não encontrado! Por favor, instale o git e inicialize os submódulos manualmente.${NC}"
+                read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
+            fi
+        else
+            echo -e "${RED}Aviso: Sem o código-fonte do QEMU, você não conseguirá compilar ou instalar as VMs macOS.${NC}"
+            read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
+        fi
+    fi
+}
+
+# Inicia a verificação de submódulos e o Menu Principal
+check_submodules
 main_menu

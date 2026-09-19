@@ -291,6 +291,99 @@ delete_vm() {
     read -n 1 -s -r -p "Pressione qualquer tecla para voltar ao menu..."
 }
 
+install_dependencies() {
+    clear
+    echo -e "${BLUE}============================================================${NC}"
+    echo -e "${GREEN}   Verificar e Instalar Dependências do Sistema${NC}"
+    echo -e "${BLUE}============================================================${NC}"
+
+    local is_interactive="${1:-true}"
+
+    # --- Verificar SO ---
+    if [ -f /etc/os-release ]; then
+        OS_NAME=$(grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
+        echo -e "Sistema detectado: ${GREEN}$OS_NAME${NC}"
+    else
+        OS_NAME="Desconhecido"
+        echo -e "${YELLOW}Aviso: Não foi possível determinar o sistema operacional.${NC}"
+    fi
+
+    local pacman_bin=""
+    local apt_bin=""
+    local dnf_bin=""
+
+    if command -v pacman >/dev/null 2>&1; then pacman_bin="pacman"; fi
+    if command -v apt-get >/dev/null 2>&1; then apt_bin="apt-get"; fi
+    if command -v dnf >/dev/null 2>&1; then dnf_bin="dnf"; fi
+
+    if [ -n "$pacman_bin" ]; then
+        echo -e "Instalando dependências via ${GREEN}pacman${NC}..."
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
+        sudo pacman -S --needed --noconfirm base-devel git wget qemu-base libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen meson ninja dtc libslirp llvm-libs llvm spirv-tools vulkan-headers || true
+        
+        # Configurar Rustup para UEFI no Arch
+        if command -v rustup >/dev/null 2>&1; then
+            echo -e "${GREEN}Rustup detectado.${NC}"
+        else
+            echo -e "${YELLOW}Instalando rustup no lugar do rust do sistema para suporte UEFI...${NC}"
+            sudo pacman -Rdd --noconfirm rust || true
+            sudo pacman -S --noconfirm rustup || true
+            rustup default stable || true
+        fi
+        
+    elif [ -n "$dnf_bin" ]; then
+        echo -e "Instalando dependências via ${GREEN}dnf${NC}..."
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
+        # Instalação das ferramentas base e de compilação do QEMU/Reims no Fedora
+        sudo dnf install -y qemu-kvm git wget libguestfs-tools dmg2img p7zip p7zip-plugins make python3 python3-pip genisoimage net-tools screen tesseract vim \
+            meson ninja-build glib2-devel pixman-devel libslirp-devel libbpf-devel libcap-ng-devel libseccomp-devel vulkan-headers vulkan-loader-devel spirv-tools llvm llvm-devel clang || true
+            
+    elif [ -n "$apt_bin" ]; then
+        echo -e "Instalando dependências via ${GREEN}apt-get${NC}..."
+        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para atualizar os repositórios e instalar os pacotes.${NC}"
+        sudo apt-get update
+        sudo apt-get install -y qemu-system uml-utilities virt-manager git \
+            wget libguestfs-tools p7zip-full make dmg2img tesseract-ocr \
+            tesseract-ocr-eng genisoimage vim net-tools screen build-essential \
+            meson ninja-build libglib2.0-dev libpixman-1-dev libslirp-dev libbpf-dev libcap-ng-dev libseccomp-dev python3-pip llvm spirv-tools || true
+    else
+        echo -e "${YELLOW}Gerenciador de pacotes pacman, apt ou dnf não encontrado.${NC}"
+        echo -e "${YELLOW}Certifique-se de que as dependências básicas (qemu, dmg2img, make, meson, ninja, libslirp, etc.) já estão instaladas.${NC}"
+    fi
+
+    # --- Configuração do Rust e UEFI Target ---
+    echo -e "\n${BLUE}Verificando compilador Rust e target UEFI...${NC}"
+    if ! command -v rustup >/dev/null 2>&1; then
+        echo -e "${YELLOW}Rustup não encontrado no PATH.${NC}"
+        if [ -f "$HOME/.cargo/env" ]; then
+            echo -e "Carregando ambiente do Cargo..."
+            source "$HOME/.cargo/env"
+        fi
+    fi
+
+    if ! command -v rustup >/dev/null 2>&1; then
+        echo -e "${YELLOW}Instalando Rust via rustup oficial...${NC}"
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || true
+        if [ -f "$HOME/.cargo/env" ]; then
+            source "$HOME/.cargo/env"
+        fi
+    fi
+
+    if command -v rustup >/dev/null 2>&1; then
+        echo -e "Adicionando target UEFI (${GREEN}x86_64-unknown-uefi${NC})..."
+        rustup target add x86_64-unknown-uefi || true
+        echo -e "${GREEN}Rust e target UEFI configurados com sucesso!${NC}"
+    else
+        echo -e "${RED}Erro: Não foi possível configurar o Rustup automaticamente. Por favor, instale o rustup e o target x86_64-unknown-uefi manualmente.${NC}"
+    fi
+
+    echo -e "\n${GREEN}Verificação de dependências concluída!${NC}"
+    if [ "$is_interactive" = "true" ]; then
+        echo ""
+        read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
+    fi
+}
+
 install_vm() {
     clear
     echo -e "${BLUE}============================================================${NC}"
@@ -299,28 +392,7 @@ install_vm() {
 
     # --- Verificar SO e Gerenciador de Pacotes ---
     echo -e "\n${BLUE}[1/7] Verificando sistema operacional e dependências...${NC}"
-    if [ -f /etc/os-release ]; then
-        OS_NAME=$(grep "^NAME=" /etc/os-release | cut -d= -f2 | tr -d '"')
-        echo -e "Sistema detectado: ${GREEN}$OS_NAME${NC}"
-    else
-        echo -e "${YELLOW}Aviso: Não foi possível determinar o sistema operacional. Assumindo baseado em Linux/Arch.${NC}"
-    fi
-
-    # Instalação de pacotes via pacman (Arch/Omarchy) ou apt (Debian/Ubuntu)
-    if command -v pacman >/dev/null 2>&1; then
-        echo -e "Instalando dependências via ${GREEN}pacman${NC}..."
-        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
-        sudo pacman -S --needed --noconfirm qemu-base git wget libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen || true
-    elif command -v apt-get >/dev/null 2>&1; then
-        echo -e "Instalando dependências via ${GREEN}apt-get${NC}..."
-        echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
-        sudo apt-get update
-        sudo apt-get install -y qemu-system uml-utilities virt-manager git \
-            wget libguestfs-tools p7zip-full make dmg2img tesseract-ocr \
-            tesseract-ocr-eng genisoimage vim net-tools screen
-    else
-        echo -e "${YELLOW}Gerenciador de pacotes pacman/apt não encontrado. Certifique-se de que dependências básicas como dmg2img, qemu e make já estão instaladas.${NC}"
-    fi
+    install_dependencies false
 
     # --- Compilar QEMU Interno ---
     echo -e "\n${BLUE}[2/7] Compilando e configurando o QEMU interno com suporte a Vulkan/Reims...${NC}"
@@ -597,19 +669,7 @@ repair_menu() {
                 read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
                 ;;
             4)
-                echo -e "\n${BLUE}Verificando dependências de sistema...${NC}"
-                if command -v pacman >/dev/null 2>&1; then
-                    sudo pacman -S --needed --noconfirm qemu-base git wget libguestfs dmg2img p7zip make python python-pip cdrtools net-tools screen || true
-                elif command -v apt-get >/dev/null 2>&1; then
-                    sudo apt-get update
-                    sudo apt-get install -y qemu-system uml-utilities virt-manager git \
-                        wget libguestfs-tools p7zip-full make dmg2img tesseract-ocr \
-                        tesseract-ocr-eng genisoimage vim net-tools screen || true
-                else
-                    echo -e "${RED}Nenhum gerenciador de pacotes suportado encontrado.${NC}"
-                fi
-                echo -e "\n${GREEN}Verificação de dependências concluída!${NC}"
-                read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
+                install_dependencies true
                 ;;
             5)
                 return
@@ -762,24 +822,26 @@ main_menu() {
         echo -e "${GREEN}      Gerenciador de VMs macOS - Reims Paravirtualização    ${NC}"
         echo -e "${BLUE}============================================================${NC}"
         echo -e "Escolha uma opção:"
-        echo -e " 1) ${GREEN}Instalar Nova Máquina Virtual macOS${NC}"
-        echo -e " 2) ${BLUE}Iniciar Máquina Virtual Existente${NC}"
-        echo -e " 3) ${YELLOW}Editar Configurações de uma VM Existente${NC}"
-        echo -e " 4) ${RED}Deletar Máquina Virtual Existente${NC}"
-        echo -e " 5) ${YELLOW}Menu de Reparo & Ferramentas${NC}"
-        echo -e " 6) ${BLUE}Menu de Atualizações (Check & Update)${NC}"
-        echo -e " 7) Sair"
+        echo -e " 1) ${GREEN}Verificar e Instalar Dependências do Sistema${NC}"
+        echo -e " 2) ${GREEN}Instalar Nova Máquina Virtual macOS${NC}"
+        echo -e " 3) ${BLUE}Iniciar Máquina Virtual Existente${NC}"
+        echo -e " 4) ${YELLOW}Editar Configurações de uma VM Existente${NC}"
+        echo -e " 5) ${RED}Deletar Máquina Virtual Existente${NC}"
+        echo -e " 6) ${YELLOW}Menu de Reparo & Ferramentas${NC}"
+        echo -e " 7) ${BLUE}Menu de Atualizações (Check & Update)${NC}"
+        echo -e " 8) Sair"
         echo -e "${BLUE}============================================================${NC}"
-        read -rp "Opção (1-7): " opt
+        read -rp "Opção (1-8): " opt
         
         case "$opt" in
-            1) install_vm ;;
-            2) start_vm ;;
-            3) edit_vm ;;
-            4) delete_vm ;;
-            5) repair_menu ;;
-            6) update_menu ;;
-            7) echo -e "\nAté mais!\n"; exit 0 ;;
+            1) install_dependencies true ;;
+            2) install_vm ;;
+            3) start_vm ;;
+            4) edit_vm ;;
+            5) delete_vm ;;
+            6) repair_menu ;;
+            7) update_menu ;;
+            8) echo -e "\nAté mais!\n"; exit 0 ;;
             *) echo -e "${RED}Opção inválida! Pressione qualquer tecla para continuar...${NC}"; read -n 1 -s ;;
         esac
     done

@@ -25,7 +25,7 @@ Ideal para quem quer rodar macOS fluido em máquinas modernas (como processadore
 *   **GPU:** Qualquer placa de vídeo (integrada ou dedicada) compatível com a API **Vulkan 1.2** ou superior (como Intel UHD 730+, AMD Radeon modernas ou NVIDIA).
 
 ### Sistema Hospedeiro (Host Linux):
-*   Qualquer distribuição Linux moderna baseada em Arch (como Arch Linux, Omarchy, EndeavourOS) ou baseada em Ubuntu/Debian (como Ubuntu 24.04/26.04).
+*   Qualquer distribuição Linux moderna baseada em Arch (como Arch Linux, Omarchy, EndeavourOS), baseada em Fedora (como Fedora Workstation/Silverblue) ou baseada em Ubuntu/Debian (como Ubuntu 24.04/26.04).
 
 ---
 
@@ -41,12 +41,13 @@ chmod +x reims_manager.sh
 ```
 
 ### O que você pode fazer pelo Gerenciador:
-* **`1` - Instalar Nova VM:** Escolha a versão desejada (de High Sierra ao Sequoia/Tahoe), informe o hardware desejado e o script cuidará do download, criação do disco e da inicialização estável com instruções detalhadas de formatação.
-* **`2` - Iniciar VM Existente:** Escolha qual VM ligar e o seu driver de vídeo: com **Aceleração Reims vGPU (Vulkan)** acelerada por hardware ou em modo de compatibilidade básico (VMware SVGA). O script detecta automaticamente se a VM é nova e oferece iniciá-la em Modo de Captura para criar o primeiro snapshot imutável de paravirtualização.
-* **`3` - Editar Configurações:** Altere as especificações de hardware (RAM, Cores de CPU e Resolução de Tela) de qualquer uma das suas VMs individualmente de forma extremamente simples.
-* **`4` - Deletar VM:** Remova com segurança e limpe todo o espaço ocupado por uma VM e todos os seus snapshots.
-* **`5` - Menu de Reparo:** Faça limpezas de logs e sockets temporários travados por crashes, verifique a integridade dos discos virtuais ou force a recompilação de componentes.
-* **`6` - Menu de Atualizações:** Verifique se existem novos commits no repositório principal, no QEMU customizado, no OSX-KVM e também analise novas versões de crates/dependências Rust.
+* **`1` - Verificar e Instalar Dependências:** Garanta que todas as dependências, compiladores (incluindo Rustup e o target UEFI) e ferramentas estejam corretamente instaladas (suporta Arch, Fedora, Debian e Ubuntu).
+* **`2` - Instalar Nova VM:** Escolha a versão desejada (de High Sierra ao Sequoia/Tahoe), informe o hardware desejado e o script cuidará do download, criação do disco e da inicialização estável com instruções detalhadas de formatação.
+* **`3` - Iniciar VM Existente:** Escolha qual VM ligar e o seu driver de vídeo: com **Aceleração Reims vGPU (Vulkan)** acelerada por hardware ou em modo de compatibilidade básico (VMware SVGA). O script detecta automaticamente se a VM é nova e oferece iniciá-la em Modo de Captura para criar o primeiro snapshot imutável de paravirtualização.
+* **`4` - Editar Configurações:** Altere as especificações de hardware (RAM, Cores de CPU e Resolução de Tela) de qualquer uma das suas VMs individualmente de forma extremamente simples.
+* **`5` - Deletar VM:** Remova com segurança e limpe todo o espaço ocupado por uma VM e todos os seus snapshots.
+* **`6` - Menu de Reparo:** Faça limpezas de logs e sockets temporários travados por crashes, verifique a integridade dos discos virtuais ou force a recompilação de componentes.
+* **`7` - Menu de Atualizações:** Verifique se existem novos commits no repositório principal, no QEMU customizado, no OSX-KVM e também analise novas versões de crates/dependências Rust.
 
 ---
 

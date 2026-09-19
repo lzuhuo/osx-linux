@@ -72,3 +72,6 @@ Vulkan-Headers/
 # Gemini session configuration
 gemini-session.json
 gemini-sessions.json
+
+# Local log files
+*.log

@@ -28,12 +28,15 @@ show_spinner() {
     local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' # Spinner moderno de braille
     local spin_idx=0
     
+    # Limpa a tela inteira uma vez antes de iniciar o loop para garantir a remoção completa do menu antigo
+    clear
+    
     # Esconde o cursor do terminal para evitar piscadas
     tput civis 2>/dev/null || true
     
     while kill -0 "$pid" 2>/dev/null; do
-        # Posiciona o cursor no topo esquerdo (evita flickers)
-        printf "\033[H"
+        # Posiciona o cursor no topo esquerdo e limpa do cursor até o fim da tela (evita flickers e resíduos de texto antigo)
+        printf "\033[H\033[J"
         
         # Desenhar o cabeçalho estático do menu
         echo -e "${BLUE}============================================================${NC}"
@@ -83,8 +86,8 @@ show_spinner() {
     wait "$pid"
     local exit_code=$?
     
-    # Atualiza a tela com o resultado final posicionado no topo
-    printf "\033[H"
+    # Atualiza a tela com o resultado final posicionado no topo e limpa até o fim
+    printf "\033[H\033[J"
     echo -e "${BLUE}============================================================${NC}"
     echo -e "${GREEN}      Gerenciador de VMs macOS - Reims Paravirtualização    ${NC}"
     echo -e "${BLUE}============================================================${NC}"
@@ -630,8 +633,8 @@ install_vm() {
     fi
 
     if [ ! -f "BaseSystem.dmg" ]; then
-        echo -e "Iniciando download da imagem de recuperação para o macOS ${GREEN}$MAC_VERSION${NC}..."
-        ./fetch-macOS-v2.py --shortname="$MAC_VERSION"
+        ./fetch-macOS-v2.py --shortname="$MAC_VERSION" > "$SCRIPT_DIR/macos_download.log" 2>&1 &
+        show_spinner $! "Baixando a imagem de recuperação oficial do macOS ($MAC_VERSION)" "$SCRIPT_DIR/macos_download.log"
         # Copia para a pasta de mídias do Reims como cache para evitar downloads repetidos da mesma versão
         mkdir -p "$SCRIPT_DIR/vm/disks"
         cp -f BaseSystem.dmg "$cached_dmg"
@@ -803,18 +806,13 @@ repair_menu() {
                         rm -rf "$SCRIPT_DIR/vendor/qemu/build"
                     fi
                 fi
-<<<<<<< HEAD
-                "$SCRIPT_DIR/scripts/qemu-build/qemu-build.sh" --target x86_64 --backend vulkan || true
-=======
                 "$SCRIPT_DIR/scripts/qemu-build/qemu-build.sh" --target x86_64 --backend vulkan > "$SCRIPT_DIR/qemu_build.log" 2>&1 &
-                show_spinner $! "Compilando QEMU com suporte Reims vGPU (pode levar alguns minutos)"
+                show_spinner $! "Compilando QEMU com suporte Reims vGPU (pode levar alguns minutos)" "$SCRIPT_DIR/qemu_build.log"
                 local build_res=$?
                 if [ $build_res -ne 0 ]; then
                     echo -e "${RED}Erro: Falha ao compilar o QEMU. Veja as últimas linhas do log em qemu_build.log:${NC}"
                     tail -n 25 "$SCRIPT_DIR/qemu_build.log"
                 fi
-                
->>>>>>> 93d46773 (feat: add initial logging for boot-x86.sh and QEMU build process)
                 echo -e "\n${BLUE}Recompilando GOP ROM...${NC}"
                 "$SCRIPT_DIR/crates/reims-vgpu-efi/scripts/reims-vgpu-efi-rom/reims-vgpu-efi-rom.sh" > "$SCRIPT_DIR/gop_build.log" 2>&1 &
                 show_spinner $! "Compilando firmware UEFI GOP ROM"
@@ -932,22 +930,25 @@ update_menu() {
                 ;;
             2)
                 echo -e "\n${BLUE}Buscando atualizações de código do projeto...${NC}"
-                git stash
-                if git pull --rebase origin master; then
+                git stash >/dev/null 2>&1
+                git pull --rebase origin master > "$SCRIPT_DIR/git_pull.log" 2>&1 &
+                show_spinner $! "Atualizando código do projeto via git pull" "$SCRIPT_DIR/git_pull.log"
+                local pull_res=$?
+                git stash pop >/dev/null 2>&1 || true
+                if [ $pull_res -eq 0 ]; then
                     echo -e "${GREEN}Código do projeto atualizado com sucesso!${NC}"
                 else
-                    echo -e "${RED}Erro ao puxar atualizações. Resolva os conflitos no Git manualmente.${NC}"
+                    echo -e "${RED}Erro ao puxar atualizações. Veja git_pull.log ou resolva conflitos manualmente.${NC}"
                 fi
-                git stash pop || true
                 read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
                 ;;
             3)
                 echo -e "\n${BLUE}Atualizando e sincronizando submódulos...${NC}"
                 git submodule update --init --recursive > "$SCRIPT_DIR/submodules_update.log" 2>&1 &
-                show_spinner $! "Sincronizando e atualizando submódulos do Git"
+                show_spinner $! "Sincronizando e atualizando submódulos do Git" "$SCRIPT_DIR/submodules_update.log"
                 if [ -d "$SCRIPT_DIR/osx-kvm-temp/.git" ]; then
                     git -C "$SCRIPT_DIR/osx-kvm-temp" pull --rebase > "$SCRIPT_DIR/osx_kvm_update.log" 2>&1 &
-                    show_spinner $! "Atualizando repositório OSX-KVM"
+                    show_spinner $! "Atualizando repositório OSX-KVM" "$SCRIPT_DIR/osx_kvm_update.log"
                 fi
                 echo -e "${GREEN}Submódulos atualizados com sucesso!${NC}"
                 read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
@@ -955,8 +956,8 @@ update_menu() {
             4)
                 echo -e "\n${BLUE}Atualizando dependências de pacotes em Rust...${NC}"
                 if command -v cargo >/dev/null 2>&1; then
-                    cargo update
-                    echo -e "${GREEN}Pacotes de crates Rust atualizados com sucesso!${NC}"
+                    cargo update > "$SCRIPT_DIR/cargo_update.log" 2>&1 &
+                    show_spinner $! "Atualizando dependências de crates Rust" "$SCRIPT_DIR/cargo_update.log"
                 else
                     echo -e "${RED}Comando cargo não encontrado.${NC}"
                 fi

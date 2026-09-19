@@ -336,7 +336,8 @@ install_dependencies() {
         echo -e "${YELLOW}Pode ser solicitado o acesso root (sudo) para instalar os pacotes.${NC}"
         # Instalação das ferramentas base e de compilação do QEMU/Reims no Fedora
         sudo dnf install -y qemu-kvm git wget libguestfs-tools dmg2img p7zip p7zip-plugins make python3 python3-pip genisoimage net-tools screen tesseract vim \
-            meson ninja-build glib2-devel pixman-devel libslirp-devel libbpf-devel libcap-ng-devel libseccomp-devel vulkan-headers vulkan-loader-devel spirv-tools llvm llvm-devel clang || true
+            meson ninja-build glib2-devel pixman-devel libslirp-devel libbpf-devel libcap-ng-devel libseccomp-devel vulkan-headers vulkan-loader-devel spirv-tools llvm llvm-devel clang \
+            gtk3-devel vte291-devel SDL2-devel SDL2_image-devel libepoxy-devel mesa-libEGL-devel mesa-libgbm-devel virglrenderer-devel libdrm-devel || true
             
     elif [ -n "$apt_bin" ]; then
         echo -e "Instalando dependências via ${GREEN}apt-get${NC}..."
@@ -345,7 +346,8 @@ install_dependencies() {
         sudo apt-get install -y qemu-system uml-utilities virt-manager git \
             wget libguestfs-tools p7zip-full make dmg2img tesseract-ocr \
             tesseract-ocr-eng genisoimage vim net-tools screen build-essential \
-            meson ninja-build libglib2.0-dev libpixman-1-dev libslirp-dev libbpf-dev libcap-ng-dev libseccomp-dev python3-pip llvm spirv-tools || true
+            meson ninja-build libglib2.0-dev libpixman-1-dev libslirp-dev libbpf-dev libcap-ng-dev libseccomp-dev python3-pip llvm spirv-tools \
+            libgtk-3-dev libsdl2-dev libvte-2.91-dev libepoxy-dev libgbm-dev || true
     else
         echo -e "${YELLOW}Gerenciador de pacotes pacman, apt ou dnf não encontrado.${NC}"
         echo -e "${YELLOW}Certifique-se de que as dependências básicas (qemu, dmg2img, make, meson, ninja, libslirp, etc.) já estão instaladas.${NC}"

@@ -381,6 +381,17 @@ install_dependencies() {
 
     echo -e "\n${GREEN}Verificação de dependências concluída!${NC}"
     if [ "$is_interactive" = "true" ]; then
+        if [ -d "$SCRIPT_DIR/vendor/qemu/build" ]; then
+            echo -e "\n${YELLOW}Aviso: O QEMU possui uma compilação anterior em cache.${NC}"
+            echo -e "Para que o suporte gráfico nativo (GTK/SDL) recém-instalado seja compilado, é necessário limpar o cache anterior."
+            read -rp "Deseja limpar o cache de compilação do QEMU para forçar uma nova configuração? [S/n]: " clean_choice
+            clean_choice="${clean_choice:-S}"
+            if [[ "$clean_choice" =~ ^[Ss]$ ]]; then
+                echo -e "Limpando diretório de compilação em vendor/qemu/build..."
+                rm -rf "$SCRIPT_DIR/vendor/qemu/build"
+                echo -e "${GREEN}Cache limpo com sucesso! Na próxima compilação, o QEMU será totalmente reconfigurado com suporte GTK/SDL.${NC}"
+            fi
+        fi
         echo ""
         read -n 1 -s -r -p "Pressione qualquer tecla para continuar..."
     fi
@@ -664,6 +675,13 @@ repair_menu() {
                 ;;
             3)
                 echo -e "\n${BLUE}Recompilando QEMU...${NC}"
+                if [ -d "$SCRIPT_DIR/vendor/qemu/build" ]; then
+                    read -rp "Deseja realizar uma compilação LIMPA (limpar cache do QEMU para forçar reconfiguração)? [s/N]: " clean_rebuild
+                    if [[ "$clean_rebuild" =~ ^[Ss]$ ]]; then
+                        echo -e "${GREEN}Limpando diretório de compilação...${NC}"
+                        rm -rf "$SCRIPT_DIR/vendor/qemu/build"
+                    fi
+                fi
                 "$SCRIPT_DIR/scripts/qemu-build/qemu-build.sh" --target x86_64 --backend vulkan || true
                 echo -e "\n${BLUE}Recompilando GOP ROM...${NC}"
                 "$SCRIPT_DIR/crates/reims-vgpu-efi/scripts/reims-vgpu-efi-rom/reims-vgpu-efi-rom.sh" || true
